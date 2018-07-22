@@ -34,7 +34,7 @@ namespace TacChess {
             Game.Instance.board[3, 0].doll = new Doll(Doll.DollType.Assault, sv);
             Game.Instance.board[1, 6].doll = new Doll(Doll.DollType.Assault, grf);
             Game.Instance.board[3, 6].doll = new Doll(Doll.DollType.Scout, grf);
-            Game.Instance.inputHandler = IH_1.Instance;
+            Game.Instance.inputHandler = IH_Normal.Instance;
 
             Game.Instance.Draw();
             while (Game.Instance.victorious < 0) {
@@ -113,7 +113,7 @@ namespace TacChess {
             }
 
             if (type == GridType.HQ) {
-                Utils.WriteAt("HQ", posX, posY + 1);
+                Utils.WriteAt("HQ", posX, posY + 1, faction.color);
             }
             else {
                 Utils.WriteAt("  ", posX, posY + 1);
@@ -219,6 +219,7 @@ namespace TacChess {
         public int currentFactionIndex = 0;
         public IInputHandler inputHandler;
         private int cursorPosX = 0, cursurPosY = 0;
+        public bool showHelp = false;
 
         public Faction CurrentFaction {
             get {
@@ -280,14 +281,31 @@ namespace TacChess {
                 board[x, y].doll = board[posX, posY].doll;
             }
             board[posX, posY].doll = null;
-
-            if (board[x, y].doll.type == Doll.DollType.Scout) {
+            
+            if (board[x, y].doll != null && board[x, y].doll.type == Doll.DollType.Scout) {
                 board[x, y].doll.faction.supply += board[x, y].supply;
                 board[x, y].supply = 0;
             }
 
-            if (board[x, y].type == Grid.GridType.HQ && board[x, y].faction != board[x, y].doll.faction) {
+            if (board[x, y].type == Grid.GridType.HQ && board[x, y].doll != null && board[x, y].faction != board[x, y].doll.faction && board[x, y].doll.type != Doll.DollType.Bomb) {
                 victorious = GetFactionIndex(board[x, y].doll.faction);
+            }
+            var loser = new List<bool>();
+            for (int i = 0; i < factions.Count; i++) {
+                loser.Add(true);
+            }
+            for (int i = 0; i < board.grids.GetLength(0); i++) {
+                for (int j = 0; j < board.grids.GetLength(1); j++) {
+                    if (board[i, j].doll != null) {
+                        loser[GetFactionIndex(board[i, j].doll.faction)] = false;
+                    }
+                }
+            }
+            if (loser[0]) {
+                victorious = 1;
+            }
+            if (loser[1]) {
+                victorious = 0;
             }
 
             return true;
@@ -336,16 +354,63 @@ namespace TacChess {
         }
         
         public void Draw() {
+            if (showHelp) {
+                DrawHelp();
+            }
+            else {
+                DrawNormal();
+            }
+        }
+
+        public void DrawNormal() {
             board.Draw();
 
             // Draw Info
-            for (int i = 0; i < factions.Count; i++) {
-                Utils.WriteAt(factions[i].name, board.grids.GetLength(0) * (GRID_CONSOLE_WIDTH - 1) + 5, 1 + 3 * (factions.Count - 1 - i), factions[i].color);
-                Utils.WriteAt("Supply: " + factions[i].supply, board.grids.GetLength(0) * (GRID_CONSOLE_WIDTH - 1) + 5, 1 + 3 * (factions.Count - 1 - i) + 1, factions[i].color);
+            int columnPos = 1;
+            int rowPos = board.grids.GetLength(0) * (GRID_CONSOLE_WIDTH - 1) + 5;
+            for (int i = factions.Count - 1; i >= 0; i--) {
+                Utils.WriteAt(factions[i].name, rowPos, columnPos, factions[i].color);
+                columnPos++;
+                Utils.WriteAt("补给: " + factions[i].supply, rowPos, columnPos, factions[i].color);
+                columnPos += 2;
             }
+            Utils.WriteAt("F1 帮助", rowPos, columnPos);
+            columnPos++;
+            Utils.WriteAt("方向键 移动光标", rowPos, columnPos);
+            columnPos++;
+            Utils.WriteAt("WASD 移动光标下的己方人形", rowPos, columnPos);
+            columnPos++;
+            Utils.WriteAt("Enter 结束回合", rowPos, columnPos);
+            columnPos++;
+            Utils.WriteAt("Esc 直接退出游戏", rowPos, columnPos);
+            columnPos++;
+            Utils.WriteAt("小键盘1/2/3/4：在己方总部部署侦察兵/突击手/精锐/炸弹", rowPos, columnPos);
+            columnPos++;
 
             // Draw Cursor
             DrawCursor(CURSOR_COLOR);
+        }
+
+        public void DrawHelp() {
+            Utils.WriteAtMiddle("游戏规则", 0);
+            Console.SetCursorPosition(0, 1);
+            Console.WriteLine("");
+            Console.WriteLine("胜利条件：令非炸弹人形抵达敌方指挥部(HQ)，或消灭对手的所有单位");
+            Console.WriteLine("");
+            Console.WriteLine("操作-部署：可消耗资源，将指定单位部署于己方的指挥部。要求指挥部上没有单位");
+            Console.WriteLine("操作-移动：将一个己方单位移动至相邻的格子，双方单位相遇时会发生战斗");
+            Console.WriteLine("");
+            Console.WriteLine("单位能力：");
+            Console.WriteLine("  侦察兵：战斗力1，部署消耗1，可搜集补给");
+            Console.WriteLine("  突击手：战斗力2，部署消耗1");
+            Console.WriteLine("  精锐：战斗力3，部署消耗2");
+            Console.WriteLine("  炸弹：战斗力X，战斗时与任意敌人同归于尽");
+            Console.WriteLine("");
+            Console.WriteLine("图标说明：");
+            Console.WriteLine("  s-补给；侦-侦察兵；突-突击手；锐-精锐；砰-炸弹；HQ-指挥部");
+            Console.WriteLine("");
+            Console.WriteLine("按任意键返回游戏……");
+
         }
 
         public void OnGameEnd() {
@@ -353,7 +418,7 @@ namespace TacChess {
                 return;
             }
             
-            int y = Console.WindowHeight / 2;
+            int y = 15;
             Utils.WriteAtMiddle(factions[victorious].name + " Wins the Game!", y, factions[victorious].color);
             Utils.WriteAtMiddle("Press Any Key to Exit...", y + 1, factions[victorious].color);
             Console.ReadKey(true);
@@ -366,12 +431,12 @@ namespace TacChess {
         void HandleInput(ConsoleKey key);
     }
 
-    public class IH_1 : IInputHandler {
-        private static IH_1 instance;
-        public static IH_1 Instance {
+    public class IH_Normal : IInputHandler {
+        private static IH_Normal instance;
+        public static IH_Normal Instance {
             get {
                 if (instance == null) {
-                    instance = new IH_1();
+                    instance = new IH_Normal();
                 }
                 return instance;
             }
@@ -442,7 +507,31 @@ namespace TacChess {
                 case ConsoleKey.Escape:
                     Game.Instance.victorious = Game.EXIT_VICTORIOUS;
                     break;
+
+                case ConsoleKey.F1:
+                    Game.Instance.inputHandler = IH_Help.Instance;
+                    Console.Clear();
+                    Game.Instance.showHelp = true;
+                    break;
             }
+        }
+    }
+
+    public class IH_Help : IInputHandler {
+        private static IH_Help instance;
+        public static IH_Help Instance {
+            get {
+                if (instance == null) {
+                    instance = new IH_Help();
+                }
+                return instance;
+            }
+        }
+
+        public void HandleInput(ConsoleKey key) {
+            Game.Instance.inputHandler = IH_Normal.Instance;
+            Console.Clear();
+            Game.Instance.showHelp = false;
         }
     }
     #endregion
